@@ -20,6 +20,7 @@ class FormatNMX(FormatHDF5):
 
     @staticmethod
     def understand(image_file):
+        print("check NMX format")
         try:
             return FormatNMX.is_nmx_file(image_file)
         except IOError:
@@ -27,7 +28,7 @@ class FormatNMX(FormatHDF5):
 
     @staticmethod
     def is_nmx_file(image_file) -> bool:
-
+        print("check NMX format")
         """
         Confirms if image_file is from NMX
         """
