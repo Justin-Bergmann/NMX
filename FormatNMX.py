@@ -6,17 +6,16 @@ from typing import Tuple
 import h5py
 from scipy.constants import Planck, m_n
 
-import cctbx.array_family.flex
-from dials.array_family import flex
+import cctbx.array_family.flex as flex
+import numpy as np
+import dxtbx_flumpy as flumpy
 
 
 from dxtbx import IncorrectFormatError
 from dxtbx.format.FormatHDF5 import FormatHDF5
-from dxtbx.model import Detector, Goniometer, PolyBeam, Sequence
-
-
-
-
+from dxtbx.model import Detector, Goniometer, PolyBeam
+from dxtbx.model.beam import PolyBeamFactory
+from dxtbx.model.sequence import SequenceFactory
 
 
 class FormatNMX(FormatHDF5):
@@ -26,13 +25,14 @@ class FormatNMX(FormatHDF5):
     preprocessed files in scipp to abtain binned data
     """
 
-    def __init__(self, image_file):
+    def __init__(self, image_file, **kwargs):
         if not FormatNMX.understand(image_file):
             raise IncorrectFormatError(self, image_file)
         self.image_file = image_file
         self.nxs_file = self.open_file(image_file)
         self.detector = None
         self.raw_data = None      
+        self.id_offset = 361600  # to be modified for actuall pixel offset 
         print("test3",self.nxs_file["NMX_data"].attrs["name"].encode('utf-8', 'surrogateescape').decode('latin-1'))
 
 
@@ -46,7 +46,7 @@ class FormatNMX(FormatHDF5):
         try:
             print("understanding NMX format", FormatNMX.is_nmx_file(image_file) )
             return FormatNMX.is_nmx_file(image_file)
-        except IOError:
+        except (IOError, KeyError):
             return False
 
     @staticmethod
@@ -59,7 +59,7 @@ class FormatNMX(FormatHDF5):
         """
         print("check NMX format")
         def get_name(image_file):
-            print("checking NMX111")
+            print("checking NMX1123")
      
             with h5py.File(image_file, "r") as handle:     
                 print("handel1",handle["NMX_data"].attrs["name"].encode('utf-8', 'surrogateescape').decode('latin-1')) 
@@ -75,9 +75,7 @@ class FormatNMX(FormatHDF5):
 
         image_size = self._get_panel_size_in_px()
         total_pixels = image_size[0] * image_size[1]
-        # Index offset in SXD data
-        # See p24 of https://www.isis.stfc.ac.uk/Pages/sxd-user-guide6683.pdf
-        idx_offset = 361600
+        idx_offset = self.id_offset
         panel_idx = (y_px * image_size[1]) + x_px
         panel_start_idx = (total_pixels * panel) + (idx_offset * panel)
         return int(panel_start_idx + panel_idx)
@@ -117,7 +115,12 @@ class FormatNMX(FormatHDF5):
         raw_counts = self.nxs_file[dataset]["detector_1"]["counts"][0, :, :]
 
         if normalise_by_proton_charge:
-            proton_charge = self.nxs_file[dataset]["proton_charge"][0]
+            try:
+                proton_charge = self.nxs_file[dataset]["proton_charge"][0]
+            except ValueError:
+                proton_charge = 1
+                print("WARNING proton charge not implemented yet in nxs_file, using dummy value")
+                
             raw_counts = raw_counts / proton_charge
 
         num_panels = self._get_num_panels()
@@ -126,7 +129,8 @@ class FormatNMX(FormatHDF5):
 
         # Index offset in SXD data
         # See p24 of https://www.isis.stfc.ac.uk/Pages/sxd-user-guide6683.pdf
-        idx_offset = 4
+        idx_offset = self.id_offset
+        idx_offset=0
         raw_data = []
 
         for n in range(1, num_panels + 1):
@@ -144,17 +148,27 @@ class FormatNMX(FormatHDF5):
 
         return tuple(raw_data)
 
-    def get_raw_data(self, index):
+    def get_raw_data(self, index, as_numpy_arrays=False, normalise_by_proton_charge=True):
 
-        if self.raw_data is None:
-            self.raw_data = self.load_raw_data()
+        raw_data = []
+        image_size = self._get_panel_size_in_px()
+        total_pixels = image_size[0] * image_size[1]
 
-        raw_data_idx = []
-        for i in self.raw_data:
-            arr = i[:, :, index : index + 1]
-            arr.reshape(flex.grid(i.all()[0], i.all()[1]))
-            raw_data_idx.append(arr)
-        return tuple(raw_data_idx)
+        for i in range(self._get_num_panels()):
+            spectra = self.nxs_file["NMX_data"]["detector_1"]["counts"][0, total_pixels*i : total_pixels*(i+1), index : index + 1]
+            spectra = np.reshape(spectra, image_size)
+            if normalise_by_proton_charge:
+                try:
+                    proton_charge = self.nxs_file["NMX_data"]["proton_charge"][0]
+                except ValueError:
+                    proton_charge = 1
+                    print("WARNING proton charge not in nxs_file, using dummy value 1")
+                spectra = spectra / proton_charge
+            if as_numpy_arrays:
+                raw_data.append(spectra)
+            else:
+                raw_data.append(flumpy.from_numpy(np.ascontiguousarray(spectra)))
+        return tuple(raw_data)
 
     def get_tof_in_seconds(self):
         return self._get_time_channels_in_seconds()
@@ -164,7 +178,7 @@ class FormatNMX(FormatHDF5):
         return [(bins[i] + bins[i + 1]) * 0.5 * 10**-6 for i in range(len(bins) - 1)]
 
     def _get_time_channel_bins(self):
-        return self.nxs_file["NMX_data"]["detector_1"]["tbin"][:]
+        return self.nxs_file["NMX_data"]["detector_1"]["t_bin"][:]
     
     def _get_time_channels_in_seconds(self):
         bins = self._get_time_channel_bins()
@@ -177,6 +191,9 @@ class FormatNMX(FormatHDF5):
     
     def get_tof_in_seconds(self):
         return self._get_time_channels_in_seconds()
+
+    def get_num_images(self):
+        return len(self.get_tof_in_seconds())
     
     def get_tof_range(self):
         return (0, len(self.get_tof_in_seconds()))
@@ -220,7 +237,7 @@ class FormatNMX(FormatHDF5):
         unit_s0 = self.get_beam().get_unit_s0()
         # Index offset in SXD data
         # See p24 of https://www.isis.stfc.ac.uk/Pages/sxd-user-guide6683.pdf
-        idx_offset = 4
+        idx_offset = self.id_offset
         raw_spectra_two_theta = []
         for panel in detector:
             two_theta = panel.get_two_theta_array(unit_s0)
@@ -262,7 +279,7 @@ class FormatNMX(FormatHDF5):
             panel.set_pixel_size(pixel_size)
             panel.set_local_frame(fast_axes[i], slow_axes[i], panel_origins[i])
             panel.set_gain(gain)
-            r, t = panel_projections[i + 1]
+            r, t = panel_projections[i]
             r = tuple(map(int, r))
             t = tuple(map(int, t))
             panel.set_projection_2d(r, t)
@@ -271,9 +288,8 @@ class FormatNMX(FormatHDF5):
 
     def _get_num_panels(self):
         #reads number of detector panales from file
-            print("nr of detectors1: ",self.nxs_file['NMX_data/instrument'].attrs["nr_detector"], type(handle['NMX_data/instrument'].attrs["nr_detector"]))
-            
-            return self.nxs_file['NMX_data/instrument'].attrs["nr_detector"]
+        #print("nr of detectors1: ",self.nxs_file['NMX_data/instrument'].attrs["nr_detector"], type(handle['NMX_data/instrument'].attrs["nr_detector"]))
+        return self.nxs_file['NMX_data/instrument'].attrs["nr_detector"]
 
     def _get_panel_names(self):
         return ["%02d" % (i + 1) for i in range(self.nxs_file['NMX_data/instrument'].attrs["nr_detector"])]
@@ -296,32 +312,18 @@ class FormatNMX(FormatHDF5):
         return (0.4, 0.4)
 
     def _get_panel_fast_axes(self):
-    #    has to be modified with variable orientation of detectors???
-        return (
-            self._panel_0_params()["fast_axis"],
-            (-1.0, -0.0, -0.0),
-            (-1.0, -0.0, -0.0),
-            (-1.0, -0.0, -0.0),
-        )
+        # has to be modified with variable orientation of detectors???
+        return self.nxs_file['NMX_data/NXdetector/fast_axis'][...]
 
     def _get_panel_slow_axes(self):
-    #    has to be modified with variable orientation of detectors  ???  
-        return (
-            self._panel_0_params()["slow_axis"],
-            (0.0, 1.0, 0.0),
-            (0.0, 1.0, 0.0),
-            (0.0, 1.0, 0.0),
+        # has to be modified with variable orientation of detectors  ???  
+        return self.nxs_file['NMX_data/NXdetector/slow_axis'][...]
    
-        )
 
     def _get_panel_origins(self):
-        #    has to be modified with variable orientation of detectors   ???
-        return (
-            self._panel_0_params()["origin"],
-            (224.999, -96.0, 96.0),
-            (60.809, -96.0, 236.945),
-            (-214.172, -96.0, 118.198),
-        )
+        # has to be modified with variable orientation of detectors   ???
+        # In cm
+        return self.nxs_file['NMX_data/NXdetector/origen'][...] * 100
     
     def _get_panel_projections_2d(self) -> dict:
 
@@ -335,19 +337,12 @@ class FormatNMX(FormatHDF5):
         p_w, p_h = self._get_panel_size_in_px()
         panel_pos = {
             0: ((1, 0, 0, 1), (0, 0)),
-            1: ((1, 0, 0, 1), (p_h, 0)),
-            2: ((1, 0, 0, 1), (-p_h, 0)),
+            1: ((1, 0, 0, 1), (0, p_w)),
+            2: ((1, 0, 0, 1), (0, -p_w)),
 
         }
 
         return panel_pos
-
-    def get_raw_data(self, index) -> Tuple:
-
-        """
-        Returns data of each panel for the ToF histogram bin at index
-        """
-        pass
 
     def get_beam(self, idx=None) -> PolyBeam:
         
@@ -372,15 +367,18 @@ class FormatNMX(FormatHDF5):
         return (1.8, 3.55)
     
     def _get_sample_to_moderator_distance(self):
-        """ gets distance between smaple and source in cm (moderator is not imlimentet jet ????)  """
-        dist = abs(self.nxs_file['NMX_data/NXsource/distance'[:][0]])*100
-        return dist
+        """ gets distance between smaple and source in mm (moderator is not imlimentet jet ????)  """
+        try:
+            dist = abs(self.nxs_file['NMX_data/NXsource/distance'[:][0]])*100
+            return dist
+        except (KeyError, ValueError):
+            print("WARNING: _get_sample_to_moderator_distance not implemented, using dummy value")
+            # Not implemented yet, so return dummy value 
+            return 8300
 
     def _get_panel_gain(self):
         return 1.0
 
-
-    
     def _get_panel_size_in_mm(self):
         size_in_px = self._get_panel_size_in_px()
         pixel_size_in_mm = self._get_panel_pixel_size_in_mm()
