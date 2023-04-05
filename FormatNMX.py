@@ -322,8 +322,9 @@ class FormatNMX(FormatHDF5):
 
     def _get_panel_origins(self):
         # has to be modified with variable orientation of detectors   ???
-        # In cm
-        return self.nxs_file['NMX_data/NXdetector/origen'][...] * 100
+        # In mm
+        print("detector position:", self.nxs_file['NMX_data/NXdetector/origen'][...] * 1000)
+        return self.nxs_file['NMX_data/NXdetector/origen'][...] * 1000
     
     def _get_panel_projections_2d(self) -> dict:
 
@@ -335,18 +336,20 @@ class FormatNMX(FormatHDF5):
         """
 #   adjustion to moving detecors
         p_w, p_h = self._get_panel_size_in_px()
+        p_w += 10
+        p_h += 10
         panel_pos = {
             0: ((1, 0, 0, 1), (0, 0)),
-            1: ((1, 0, 0, 1), (0, p_w)),
-            2: ((1, 0, 0, 1), (0, -p_w)),
+            1: ((1, 0, 0, 1), (0, -p_w )),
+            2: ((1, 0, 0, 1), (0, p_w )),
 
         }
 
         return panel_pos
 
-    def get_beam(self, idx=None) -> PolyBeam:
+    # def get_beam(self, idx=None) -> PolyBeam:
         
-        pass
+    #     pass
 
     def get_beam(self, idx=None):
         sample_to_source_dir = self._get_sample_to_source_direction()
@@ -358,7 +361,9 @@ class FormatNMX(FormatHDF5):
             wavelength_range=wavelength_range,
         )
 
-    
+    def _get_unit_s0(self):
+        return (0, 0, 1)
+
     def _get_sample_to_source_direction(self):
         return (0, 0, -1)
     
