@@ -33,7 +33,7 @@ class FormatNMX(FormatHDF5):
         self.detector = None
         self.raw_data = None      
         self.id_offset = 361600  # to be modified for actuall pixel offset 
-        print("test3",self.nxs_file["NMX_data"].attrs["name"].encode('utf-8', 'surrogateescape').decode('latin-1'))
+        # print("test3",self.nxs_file["NMX_data"].attrs["name"].encode('utf-8', 'surrogateescape').decode('latin-1'))
 
 
     
@@ -42,7 +42,7 @@ class FormatNMX(FormatHDF5):
 
     @staticmethod
     def understand(image_file):
-        print("check NMX format1")
+        print("check NMX format")
         try:
             print("understanding NMX format", FormatNMX.is_nmx_file(image_file) )
             return FormatNMX.is_nmx_file(image_file)
@@ -51,18 +51,18 @@ class FormatNMX(FormatHDF5):
 
     @staticmethod
     def is_nmx_file(image_file) -> bool:
-        print("check NMX format")
-        print("check2",image_file)
+        # print("check NMX format")
+        # print("check2",image_file)
 
         """
         Confirms if image_file is from NMX
         """
-        print("check NMX format")
+        # print("check NMX format")
         def get_name(image_file):
-            print("checking NMX1123")
+            # print("checking NMX1123")
      
             with h5py.File(image_file, "r") as handle:     
-                print("handel1",handle["NMX_data"].attrs["name"].encode('utf-8', 'surrogateescape').decode('latin-1')) 
+                # print("handel1",handle["NMX_data"].attrs["name"].encode('utf-8', 'surrogateescape').decode('latin-1')) 
                      
                 return handle["NMX_data"].attrs["name"].encode('utf-8', 'surrogateescape').decode('latin-1')
 #            print("test read NXTOFRAW",FormatNXTOFRAW.understand(image_file))
@@ -85,7 +85,7 @@ class FormatNMX(FormatHDF5):
     def get_raw_spectra(self, normalize_by_proton_charge=True):
         """ loads TOF data for all detectores at once"""
         if normalize_by_proton_charge:
-            proton_charge = self.nxs_file["NMX_data"]["proton_charge"][0]
+            proton_charge = self.nxs_file["NMX_data"]["proton_charge"][...]
             return (
                 self.nxs_file["NMX_data"]["detector_1"]["counts"][:] / proton_charge
             )
@@ -116,7 +116,7 @@ class FormatNMX(FormatHDF5):
 
         if normalise_by_proton_charge:
             try:
-                proton_charge = self.nxs_file[dataset]["proton_charge"][0]
+                proton_charge = self.nxs_file[dataset]["proton_charge"][...]
             except ValueError:
                 proton_charge = 1
                 print("WARNING proton charge not implemented yet in nxs_file, using dummy value")
@@ -158,8 +158,9 @@ class FormatNMX(FormatHDF5):
             spectra = self.nxs_file["NMX_data"]["detector_1"]["counts"][0, total_pixels*i : total_pixels*(i+1), index : index + 1]
             spectra = np.reshape(spectra, image_size)
             if normalise_by_proton_charge:
+                # print("proton charge",self.nxs_file["NMX_data"]["proton_charge"][...])
                 try:
-                    proton_charge = self.nxs_file["NMX_data"]["proton_charge"][0]
+                    proton_charge = self.nxs_file["NMX_data"]["proton_charge"][...]
                 except ValueError:
                     proton_charge = 1
                     print("WARNING proton charge not in nxs_file, using dummy value 1")
@@ -312,19 +313,29 @@ class FormatNMX(FormatHDF5):
         return (0.4, 0.4)
 
     def _get_panel_fast_axes(self):
-        # has to be modified with variable orientation of detectors???
-        return self.nxs_file['NMX_data/NXdetector/fast_axis'][...]
-
+        # has to be modified with variable orientation of detectors???  
+        fast_axis = self.nxs_file['NMX_data/NXdetector/fast_axis'][...]
+        # fast_axis =  [[1., 0., 0.], [0. ,0. ,1.],  [0. ,0., -1.]]
+        print("fast axis",fast_axis)
+        return fast_axis
+    
     def _get_panel_slow_axes(self):
         # has to be modified with variable orientation of detectors  ???  
-        return self.nxs_file['NMX_data/NXdetector/slow_axis'][...]
+        slow_axis = self.nxs_file['NMX_data/NXdetector/slow_axis'][...] 
+        # slow_axis =  [[0., 1., 0.], [0. ,1. ,0.],[0. ,1., 0.]]
+        print("slow_axis:",slow_axis)
+        return slow_axis
    
 
     def _get_panel_origins(self):
         # has to be modified with variable orientation of detectors   ???
         # In mm
-        print("detector position:", self.nxs_file['NMX_data/NXdetector/origen'][...] * 1000)
-        return self.nxs_file['NMX_data/NXdetector/origen'][...] * 1000
+        # print("detector position:", self.nxs_file['NMX_data/NXdetector/origen'][...] * 1000)
+        position =self.nxs_file['NMX_data/NXdetector/origen'][...] * 1000 
+        # position = [[ -250 , -250.  ,  -292.   ], [ -290 ,-250. ,   -250   ],  [ 290 ,-250. ,   250.   ]]
+        print("detectors at", position)
+        # return self.nxs_file['NMX_data/NXdetector/origen'][...] * 1000
+        return position
     
     def _get_panel_projections_2d(self) -> dict:
 
@@ -339,9 +350,9 @@ class FormatNMX(FormatHDF5):
         p_w += 10
         p_h += 10
         panel_pos = {
-            0: ((1, 0, 0, 1), (0, 0)),
-            1: ((1, 0, 0, 1), (0, -p_w )),
-            2: ((1, 0, 0, 1), (0, p_w )),
+            0: ((-1, 0, 0, -1), (p_h, 0)),
+            1: ((-1, 0, 0, -1), (p_h, p_w )),
+            2: ((-1, 0, 0, -1), (p_h, -p_w )),
 
         }
 
@@ -371,15 +382,40 @@ class FormatNMX(FormatHDF5):
         '''wawelength range in A'''
         return (1.8, 3.55)
     
+
+    def get_gutmann_profile_params(self):
+
+        """
+        Taken from SXDII_corrected.instr
+        Parameters for profile described in
+        https://doi.org/10.1016/j.nima.2016.12.026
+
+        dt/t: eq (7)
+        dtheta: eq (7)
+        alpha: eq (6)
+        beta: eq (6)
+        beta_w: wavelength-dependent verstion of beta
+        """
+
+        return {
+            "dt/t": 0.008,
+            "dtheta": 1.000,
+            "alpha": 2.000,
+            "beta": 0.030,
+            "beta_w": 0.015,
+        }
+
+
     def _get_sample_to_moderator_distance(self):
         """ gets distance between smaple and source in mm (moderator is not imlimentet jet ????)  """
         try:
-            dist = abs(self.nxs_file['NMX_data/NXsource/distance'[:][0]])*100
+            dist = abs(self.nxs_file['NMX_data/NXsource/distance'][...])*100
+            # print("sample to source dinstance",dist)
             return dist
         except (KeyError, ValueError):
             print("WARNING: _get_sample_to_moderator_distance not implemented, using dummy value")
             # Not implemented yet, so return dummy value 
-            return 8300
+            return 15800
 
     def _get_panel_gain(self):
         return 1.0
