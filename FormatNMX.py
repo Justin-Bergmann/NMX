@@ -176,14 +176,14 @@ class FormatNMX(FormatHDF5):
 
     def _get_time_channels_in_seconds(self):
         bins = self._get_time_channel_bins()
-        return [(bins[i] + bins[i + 1]) * 0.5 * 10**-6 for i in range(len(bins) - 1)]
+        return [(bins[i] + bins[i + 1]) * 0.5  for i in range(len(bins) - 1)]
 
     def _get_time_channel_bins(self):
         return self.nxs_file["NMX_data"]["detector_1"]["t_bin"][:]
     
-    def _get_time_channels_in_seconds(self):
-        bins = self._get_time_channel_bins()
-        return [(bins[i] + bins[i + 1]) * 0.5 * 10**-6 for i in range(len(bins) - 1)]
+    # def _get_time_channels_in_seconds(self):
+        # bins = self._get_time_channel_bins()
+        # return [(bins[i] + bins[i + 1]) * 0.5 * 10**-6 for i in range(len(bins) - 1)]
     
 
     def _get_time_channels_in_usec(self):
@@ -207,6 +207,7 @@ class FormatNMX(FormatHDF5):
     def get_wavelength_channels(self):
         time_channels = self._get_time_channels_in_seconds()
         L = self._get_sample_to_moderator_distance() * 10**-3
+        # print("sampel do moderater distance in cm", self._get_sample_to_moderator_distance(),L,"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         return [self.get_tof_wavelength(L, i) for i in time_channels]
 
     def get_wavelength_channels_in_A(self):
@@ -376,7 +377,7 @@ class FormatNMX(FormatHDF5):
         return (0, 0, 1)
 
     def _get_sample_to_source_direction(self):
-        return (0, 0, -1)
+        return (0, 0, 1)
     
     def _get_wavelength_range(self):
         '''wawelength range in A'''
@@ -400,8 +401,11 @@ class FormatNMX(FormatHDF5):
         return {
             "dt/t": 0.008,
             "dtheta": 1.000,
-            "alpha": 2.000,
-            "beta": 0.030,
+            # "alpha": 2.000,
+            # "beta": 0.030,
+            "alpha": 6.000,
+            "beta": 0.60,
+
             "beta_w": 0.015,
         }
 
@@ -409,13 +413,13 @@ class FormatNMX(FormatHDF5):
     def _get_sample_to_moderator_distance(self):
         """ gets distance between smaple and source in mm (moderator is not imlimentet jet ????)  """
         try:
-            dist = abs(self.nxs_file['NMX_data/NXsource/distance'][...])*100
+            dist = abs(self.nxs_file['NMX_data/NXsource/distance'][...])*1000
             # print("sample to source dinstance",dist)
             return dist
         except (KeyError, ValueError):
             print("WARNING: _get_sample_to_moderator_distance not implemented, using dummy value")
             # Not implemented yet, so return dummy value 
-            return 15800
+            return 157406
 
     def _get_panel_gain(self):
         return 1.0
@@ -479,6 +483,8 @@ class FormatNMX(FormatHDF5):
     def get_sequence(self, idx=None):
         image_range = (1, self.get_num_images())
         tof_in_seconds = self.get_tof_in_seconds()
+        # print("TOD in Seconds",tof_in_seconds)
+        # print("waveleth in A",self.get_wavelength_channels_in_A())
         return SequenceFactory.make_tof_sequence(
             image_range=image_range,
             tof_in_seconds=tof_in_seconds,
