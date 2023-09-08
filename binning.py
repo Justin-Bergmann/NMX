@@ -1,3 +1,4 @@
+# Import necessary libraries
 from datetime import datetime
 startTime = datetime.now()
 import tracemalloc
@@ -31,13 +32,14 @@ import h5py
 # starting the momory monitoring
 tracemalloc.start()
 
-
+# Define command-line arguments
 parser=argparse.ArgumentParser()
 #parser.add_argument('--res', help='input res file',required=True)
 parser.add_argument('--nex', help='input nexus file',required=True)
 parser.add_argument('--bins', help='number of time binns (must be integer)',required=False,default=100)
 parser.add_argument('--maxprop', help='nomralisation to maximum probility',required=False,default=1)
 
+# Retrieve command-line arguments
 args=parser.parse_args()
 if args.nex != None:
    filename=args.nex
@@ -45,36 +47,43 @@ if args.nex != None:
 if args.bins != None:
    t_step=int(args.bins)
    print("number of time bins:", t_step)
+
+max_prop = 1
 if args.maxprop != None:
    max_prop=int(args.maxprop)
    print("nomalisation of max propailitytie:", max_prop)
 
 
-#Number op pixels per detecotr dimmension
+# Number of pixels per detector dimension
 pix = 1280
 
-#number of detectors
+
+# Number of detectors
 n_det = 3
 
 
 def CDist2(A,B):
-#calculate distance betweenn two points
-        dist = len3dvec(twoP_to_vec(A, B))
-        return dist
+    """
+    Calculate the distance between two points.
+    """
+    dist = len3dvec(twoP_to_vec(A, B))
+    return dist
 
 
 
 def len3dvec(vec):
-## calculates lengh of a 3D vecor
-## input as list
-        a = np.sqrt(vec[0]**2 + vec[1]**2 + vec[2]**2)
-        return a
+    """
+    Calculate the length of a 3D vector.
+    """
+    a = np.sqrt(vec[0]**2 + vec[1]**2 + vec[2]**2)
+    return a
 
 def twoP_to_vec(A,B):
-#creates vector between two points
-        vec = np.array([B[0]-A[0], B[1]-A[1], B[2]-A[2]])
-
-        return vec
+    """
+    Create a vector between two points.
+    """
+    vec = np.array([B[0]-A[0], B[1]-A[1], B[2]-A[2]])
+    return vec
 
 def rotation_matrix(axis, theta):
     """
@@ -92,27 +101,29 @@ def rotation_matrix(axis, theta):
                      [2 * (bd + ac), 2 * (cd - ab), aa + dd - bb - cc]])
 
 def read_in_data(filename):
-
+    """
+    Read data from an HDF5 file and prepare it for processing.
+    """
     f = h5py.File(filename)
     a = f['entry1/data']['bank01_events_dat_list_p_x_y_n_id_t']['events'][...]
     #a[0]
     d = np.matrix.transpose(a)
     print("shape of event list (p_x_y_n_id_t)", d.shape)
     print("start extracting data")
-    #alocate units to events and create seperate list for each parameter
+    # Allocate units to events and create separate lists for each parameter
     t_list = sc.array(dims=['x'], unit='s', values=d[5])
     id_list = sc.array(dims=['x'], unit=None, values=d[4], dtype='int64')
     #print(x_list.shape, y_list.shape, t_list.shape,id_list.shape)
 
     weights = sc.array(dims=['x'], unit='counts', values=d[0]) #change to integer for measured data
-    # normalise neutron with the highest probability to set value
+    # Normalize weights to the maximum probability
     weights = weights * (max_prop/weights.max()) #delete for actual data
     # weights = sc.ones_like(x_list)
     # weights.unit = 'counts'
     da = sc.DataArray(data=weights, coords={ 't': t_list, 'id': id_list})
     
 
-    #make sure alll IDs are reconised:
+    # Ensure all IDs are recognized
     print("id min",id_list.values.min())
     print("id max",id_list.values.max())
 
@@ -120,26 +131,25 @@ def read_in_data(filename):
     ids2 = sc.arange('id', 2000001, 3638401, unit=None)
     ids3 = sc.arange('id', 4000001, 5638401, unit=None)
     ids = sc.concat([ids1, ids2, ids3], 'id')
-    #grouping by IDs
+    
     return da, ids
 
-print("read in data")
+
+print("Read in data")
 
 da, ids = read_in_data(filename)
 
 
-print("beginn grouping")
+print("Begin grouping")
 grouped = da.group(ids)
 del da
 
-print("beginn hinstogram")
+print("Begin histogram")
 group_t = grouped.hist(t=t_step)
 del grouped
-#group_t = da.hist(t=t_step)
-#t_edges = sc.linspace('t', t_list.min().value, np.nextafter(t_list.max().value,np.inf), t_step, unit=t_list.unit)
-#group_t = sc.binning.make_binned(da, edges=[t_edges], groups=[ids]).hist()
-print("endn grouping")
-print("extractin geometry informations")
+
+# Extract geometry information from the input file
+print("Extracting geometry information")
 f = h5py.File(filename)
 origen = f['entry1/data']['bank01_events_dat_list_p_x_y_n_id_t']['distance'][0].decode()
 origen = list(np.float_(origen.split()))
@@ -157,7 +167,7 @@ rot_l1 = []
 fast_l = []
 slow_l = []
 
-
+# Parse XML data to extract component information
 for i in range(len(xml)):
     ls = xml[i].replace('<t',' ').replace('>',' ').replace('"',' ').replace('<',' ').replace('\\t',' ').split()
     # print(xml[i])
@@ -203,7 +213,7 @@ for i in range(len(xml)):
 # print("distance between sample and source",CDist2(source_pos, sample_pos))
 # print("detector positions, relative to source at 0,0,0:",d_list)
 # print("rotation list",rot_l)
-#shift from rleative position to source to relative to sample
+# Shift from relative position to source to relative to sample
 ds_l = []
 sample_pos = sample_pos * [-1,-1,-1]
 print("sample_pos",sample_pos)
@@ -260,6 +270,7 @@ cor=[phix,phiy, phiz]
 cryst_or = np.array(cor)
 cryst_or
 
+# Extract file name for output
 no = filename.split('/')
 print(no)
 name_out= no[-1].split('.')[0]
@@ -267,8 +278,9 @@ print(name_out)
 file_out = './'+name_out+'_'+str(t_step)+'_out.h5'
 print(file_out)
 
-print("start writing to file")
+print("Start writing to file")
 
+# Write data to an output Nexus file
 with h5py.File(file_out, 'w') as fo:
 ## create output nexus file
    fo.attrs['default'] = 'NMX_data'
@@ -282,18 +294,20 @@ with h5py.File(file_out, 'w') as fo:
    nxentry.attrs['name'] = "NMX"
    #nxentry.attrs['name'].__setattr__('name','NMX') 
 
-#SAMPLE
+   # Create NXsample group
    nx_sample = nxentry.create_group('NXsample')
    nx_sample.__setitem__('name','Single_crystal')
 
 
-#Instrument
+   # Create NXinstrument group
    nx_instrument = nxentry.create_group('NXinstrument')
-
    nx_detector = nxentry.create_group('NXdetector')
+
+   # Create dataset for detector origin
    det_origen = nx_detector.create_dataset('origen', data=ds_l) 
    det_origen.attrs['units'] = 'm'
 
+   # Create datasets for fast and slow axes
    fast_axis = nx_detector.create_dataset('fast_axis', data=fast_l) 
    slow_axis = nx_detector.create_dataset('slow_axis', data=slow_l) 
 
@@ -316,7 +330,7 @@ with h5py.File(file_out, 'w') as fo:
    pixel_id.attrs['long_name'] = 'pixel ID'
 
 
-#SOURCE
+# Create NXsource group
    nx_inst = nxentry.create_group('instrument')
    nx_inst.attrs['nr_detector'] = len(d_list)
    nx_source = nxentry.create_group('NXsource')
@@ -339,9 +353,10 @@ with h5py.File(file_out, 'w') as fo:
 
    fo.close()
    del fo
+print("Done writing to file")
 
+# Memory usage tracking
 current, peak = tracemalloc.get_traced_memory()
-print('2 current memory [GB]: {}, peak memory [GB]: {} '.format(round((current/(1024*1024*1024)), 4), round((peak /(1024*1024*1024) ), 4) ))
-# stopping the library
+print('Current memory [GB]: {}, peak memory [GB]: {}'.format(round((current / (1024 * 1024 * 1024)), 4), round((peak / (1024 * 1024 * 1024)), 4)))
 tracemalloc.stop()
-print("neded time (h:mm:ss): ", datetime.now() - startTime)
+print("Elapsed time (h:mm:ss):", datetime.now() - startTime)
